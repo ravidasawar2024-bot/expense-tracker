@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Expense Tracker</title>
+
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+    font-family:Segoe UI,Arial;
+    background:linear-gradient(135deg,#667eea,#764ba2);
+    padding:20px;
+}
+.container{max-width:1200px;margin:auto}
+h1{text-align:center;color:#fff;margin-bottom:30px}
+
+.summary{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(250px,1fr));
+    gap:20px;
+}
+.card{
+    background:#fff;
+    padding:20px;
+    border-radius:12px;
+    box-shadow:0 10px 25px rgba(0,0,0,.1);
+}
+.card h3{color:#666;font-size:14px}
+.card p{font-size:26px;font-weight:bold}
+
+.income p{color:#10b981}
+.expense p{color:#ef4444}
+.balance p{color:#3b82f6}
+
+.main{
+    display:grid;
+    grid-template-columns:320px 1fr;
+    gap:25px;
+    margin-top:30px;
+}
+@media(max-width:900px){.main{grid-template-columns:1fr}}
+
+.form,.box{
+    background:#fff;
+    padding:20px;
+    border-radius:12px;
+    box-shadow:0 10px 25px rgba(0,0,0,.1);
+}
+.form h2,.box h2{margin-bottom:15px}
+
+label{font-size:14px;color:#444}
+input,select,button{
+    width:100%;
+    padding:10px;
+    margin-top:5px;
+    margin-bottom:12px;
+    border-radius:8px;
+    border:2px solid #e5e7eb;
+}
+button{
+    background:#667eea;
+    color:#fff;
+    border:none;
+    font-weight:bold;
+    cursor:pointer;
+}
+button:hover{background:#5568d3}
+
+.filters{
+    display:flex;
+    gap:15px;
+    flex-wrap:wrap;
+    margin-bottom:20px;
+}
+
+.transactions{max-height:420px;overflow-y:auto}
+.tx{
+    display:flex;
+    justify-content:space-between;
+    padding:12px;
+    border-radius:10px;
+    margin-bottom:10px;
+}
+.tx.income{background:#d1fae5}
+.tx.expense{background:#fee2e2}
+
+.tx span{font-weight:bold}
+.tx button{
+    width:auto;
+    padding:5px 10px;
+    background:#ef4444;
+}
+
+canvas{display:block;margin:auto}
+.legend{margin-top:15px;font-size:14px}
+.legend div{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.color{width:14px;height:14px;border-radius:3px}
+
+.bar{
+    background:#e5e7eb;
+    height:25px;
+    border-radius:12px;
+    overflow:hidden;
+}
+.fill{
+    height:100%;
+    color:#fff;
+    font-size:12px;
+    text-align:right;
+    padding-right:8px;
+    font-weight:bold;
+}
+</style>
+</head>
+
+<body>
+<div class="container">
+<h1>💰 Expense Tracker</h1>
+
+<div class="summary">
+    <div class="card income">
+        <h3>Total Income</h3>
+        <p id="income">$0.00</p>
+    </div>
+    <div class="card expense">
+        <h3>Total Expense</h3>
+        <p id="expense">$0.00</p>
+    </div>
+    <div class="card balance">
+        <h3>Balance</h3>
+        <p id="balance">$0.00</p>
+    </div>
+</div>
+
+<div class="main">
+    <div class="form">
+        <h2>Add Transaction</h2>
+
+        <label>Type</label>
+        <select id="type" onchange="updateCategory()">
+            <option value="expense">Expense</option>
+            <option value="income">Income</option>
+        </select>
+
+        <label>Description</label>
+        <input id="desc" placeholder="Description">
+
+        <label>Amount</label>
+        <input id="amount" type="number">
+
+        <label>Category</label>
+        <select id="category"></select>
+
+        <label>Date</label>
+        <input id="date" type="date">
+
+        <button onclick="addTx()">Add</button>
+    </div>
+
+    <div>
+        <div class="box">
+            <h2>Charts</h2>
+            <canvas id="pie" width="200" height="200"></canvas>
+            <div class="legend" id="legend"></div>
+            <div id="bars"></div>
+        </div>
+
+        <div class="box" style="margin-top:20px">
+            <h2>Transactions</h2>
+            <div class="filters">
+                <select id="filter" onchange="render()">
+                    <option value="all">All</option>
+                    <option value="income">Income</option>
+                    <option value="expense">Expense</option>
+                </select>
+            </div>
+            <div class="transactions" id="list"></div>
+        </div>
+    </div>
+</div>
+</div>
+
+<script>
+let txs=[];
+const colors={
+    food:"#FF6384",transport:"#36A2EB",shopping:"#9966FF",
+    entertainment:"#4BC0C0",health:"#FF9F40",other:"#9E9E9E",
+    salary:"#4CAF50",freelance:"#2196F3"
+};
+
+const expenseCats=["food","transport","shopping","entertainment","health","other"];
+const incomeCats=["salary","freelance","other"];
+
+document.getElementById("date").valueAsDate=new Date();
+updateCategory();
+load();
+
+function updateCategory(){
+    let t=document.getElementById("type").value;
+    let c=document.getElementById("category");
+    c.innerHTML="";
+    (t==="expense"?expenseCats:incomeCats).forEach(x=>{
+        let o=document.createElement("option");
+        o.value=o.textContent=x;
+        c.appendChild(o);
+    });
+}
+
+function addTx(){
+    let d=document.getElementById("desc").value;
+    let a=+document.getElementById("amount").value;
+    if(!d||a<=0) return alert("Invalid input");
+
+    txs.unshift({
+        id:Date.now(),
+        type:type.value,
+        desc:d,
+        amt:a,
+        cat:category.value,
+        date:date.value
+    });
+    save(); render();
+    desc.value=amount.value="";
+}
+
+function save(){localStorage.setItem("txs",JSON.stringify(txs))}
+function load(){txs=JSON.parse(localStorage.getItem("txs")||"[]");render()}
+
+function del(id){txs=txs.filter(t=>t.id!==id);save();render()}
+
+function render(){
+    let f=filter.value;
+    let list=document.getElementById("list");
+    list.innerHTML="";
+    let show=txs.filter(t=>f==="all"||t.type===f);
+
+    let inc=0,exp=0;
+    show.forEach(t=>t.type==="income"?inc+=t.amt:exp+=t.amt);
+
+    income.textContent=`$${inc.toFixed(2)}`;
+    expense.textContent=`$${exp.toFixed(2)}`;
+    balance.textContent=`$${(inc-exp).toFixed(2)}`;
+
+    show.forEach(t=>{
+        list.innerHTML+=`
+        <div class="tx ${t.type}">
+            <div>${t.desc}<br><small>${t.cat} | ${t.date}</small></div>
+            <span>${t.type==="income"?"+":"-"}$${t.amt}</span>
+            <button onclick="del(${t.id})">🗑</button>
+        </div>`;
+    });
+
+    charts(show.filter(t=>t.type==="expense"));
+}
+
+function charts(exp){
+    let map={};
+    exp.forEach(e=>map[e.cat]=(map[e.cat]||0)+e.amt);
+    let total=Object.values(map).reduce((a,b)=>a+b,0);
+
+    let ctx=pie.getContext("2d");
+    ctx.clearRect(0,0,200,200);
+    let start=0;
+
+    legend.innerHTML="";
+    bars.innerHTML="";
+
+    Object.entries(map).forEach(([k,v])=>{
+        let slice=v/total*2*Math.PI;
+        ctx.beginPath();
+        ctx.moveTo(100,100);
+        ctx.arc(100,100,90,start,start+slice);
+        ctx.fillStyle=colors[k];
+        ctx.fill();
+        start+=slice;
+
+        legend.innerHTML+=`<div><div class="color" style="background:${colors[k]}"></div>${k} $${v}</div>`;
+        bars.innerHTML+=`
+        <div>${k}
+            <div class="bar">
+                <div class="fill" style="width:${v/total*100}%;background:${colors[k]}">
+                ${(v/total*100).toFixed(1)}%
+                </div>
+            </div>
+        </div>`;
+    });
+}
+</script>
+</body>
+</html>
